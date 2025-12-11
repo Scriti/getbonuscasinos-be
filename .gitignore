@@ -43,4 +43,5 @@ lerna-debug.log*
 credentials.json
 *-credentials.json
 *-service-account.json
+*.pem
 

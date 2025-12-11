@@ -6,7 +6,10 @@ export class BonusDto {
   wager: string;
   minDeposit: string;
   trackingLink: string;
+  tags: string[];
 }
+
+
 
 
 

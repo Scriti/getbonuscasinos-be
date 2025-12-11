@@ -18,6 +18,50 @@ export class GoogleSheetsService implements OnModuleInit {
     await this.initializeSheets();
   }
 
+  /**
+   * Converts Google Drive links to viewable image format
+   * Supports various Google Drive URL formats and extracts the file ID
+   */
+  private convertDriveLinkToViewable(link: string): string {
+    if (!link || link.trim() === '') {
+      return '';
+    }
+
+    // If already in the correct format, return as is
+    if (link.includes('drive.usercontent.google.com/download')) {
+      return link;
+    }
+
+    let fileId = '';
+
+    // Extract file ID from various Google Drive URL formats
+    // Format 1: https://drive.google.com/file/d/FILE_ID/view
+    const fileIdMatch1 = link.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch1) {
+      fileId = fileIdMatch1[1];
+    } else {
+      // Format 2: https://drive.google.com/open?id=FILE_ID
+      const fileIdMatch2 = link.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (fileIdMatch2) {
+        fileId = fileIdMatch2[1];
+      } else {
+        // Format 3: Just the file ID itself (if it's already just an ID)
+        const idPattern = /^[a-zA-Z0-9_-]+$/;
+        if (idPattern.test(link.trim())) {
+          fileId = link.trim();
+        }
+      }
+    }
+
+    // If we couldn't extract a file ID, return the original link
+    if (!fileId) {
+      return link;
+    }
+
+    // Convert to viewable format
+    return `https://drive.usercontent.google.com/download?id=${fileId}&export=view&authuser=0`;
+  }
+
   private async initializeSheets() {
     // Option 1: Use JSON credentials file (preferred - simpler and avoids key parsing issues)
     const credentialsPath = this.configService.get<string>('GOOGLE_APPLICATION_CREDENTIALS');
@@ -76,7 +120,7 @@ export class GoogleSheetsService implements OnModuleInit {
     try {
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
-        range: 'Entries!A2:G', // Skip header row, read from row 2 onwards
+        range: 'Entries!A2:H', // Skip header row, read from row 2 onwards (including Tags column H)
       });
 
       const rows = response.data.values;
@@ -86,15 +130,28 @@ export class GoogleSheetsService implements OnModuleInit {
 
       const bonuses: BonusDto[] = rows
         .filter((row) => row && row[0]) // Filter out empty rows
-        .map((row) => ({
-          brandName: row[0] || '',
-          logo: row[1] || '',
-          welcomeBonus: row[2] || '',
-          bonusDetails: row[3] || '',
-          wager: row[4] || '',
-          minDeposit: row[5] || '',
-          trackingLink: row[6] || '',
-        }));
+        .map((row) => {
+          // Parse tags from column H (index 7)
+          // Tags in Google Sheets dropdown with multiple selections are typically comma-separated
+          const tagsString = row[7] || '';
+          const tags = tagsString
+            ? tagsString
+                .split(',')
+                .map((tag: string) => tag.trim())
+                .filter((tag: string) => tag.length > 0)
+            : [];
+
+          return {
+            brandName: row[0] || '',
+            logo: this.convertDriveLinkToViewable(row[1] || ''),
+            welcomeBonus: row[2] || '',
+            bonusDetails: row[3] || '',
+            wager: row[4] || '',
+            minDeposit: row[5] || '',
+            trackingLink: row[6] || '',
+            tags,
+          };
+        });
 
       return bonuses;
     } catch (error) {
